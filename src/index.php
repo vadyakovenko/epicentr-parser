@@ -1,13 +1,12 @@
 <?php
 
-use GuzzleHttp\Client;
 use Symfony\Component\DomCrawler\Crawler;
 
 require __DIR__ . './../vendor/autoload.php';
 
 const BASE_EPICENTR_URL  = 'https://epicentrk.ua';
 const CATEGORIES_FILE = 'categories.json';
-const CATEGORIES_WITH_PRODUCTS_PAGE_INFO = 'categories_with_products_page_info.json';
+const CATEGORIES_WITH_PRODUCTS = 'categories_with_products.json';
 
 $categories = [];
 
@@ -20,48 +19,24 @@ if (file_exists('categories.json')) {
 
 $categoriesWithProductsPageInfo = $categories;
 
-if (file_exists(CATEGORIES_WITH_PRODUCTS_PAGE_INFO)) {
-    $categoriesWithProductsPageInfo = json_decode(file_get_contents(CATEGORIES_WITH_PRODUCTS_PAGE_INFO), true);
+if (file_exists(CATEGORIES_WITH_PRODUCTS)) {
+    $categoriesWithProductsPageInfo = json_decode(file_get_contents(CATEGORIES_WITH_PRODUCTS), true);
 } else {
     foreach ( $categoriesWithProductsPageInfo as $i => &$category) {
         if (isset($category['children'])) {
-            foreach ($category['children'] as $j => $child) {
+            foreach ($category['children'] as $j => &$child) {
                 echo "{$i}.{$j}" . PHP_EOL;
                 echo $child['name'] . PHP_EOL;
-                $category['children'][$j]['productsPageInfo'] = getProductsPageInfo(BASE_EPICENTR_URL . $child['uri']);
+                $child[$j]['products'] = getProducts(BASE_EPICENTR_URL . $child['uri']);
             }
         } else {
             echo $i . PHP_EOL;
             echo $category['name'] . PHP_EOL;
-            $category['children'][$i]['productsPageInfo'] = getProductsPageInfo(BASE_EPICENTR_URL . $category['uri']);
+            $category[$i]['products'] = getProducts(BASE_EPICENTR_URL . $category['uri']);
         }
     }
-    file_put_contents(CATEGORIES_WITH_PRODUCTS_PAGE_INFO, json_encode($categories, JSON_UNESCAPED_UNICODE));
+    file_put_contents(CATEGORIES_WITH_PRODUCTS, json_encode($categoriesWithProductsPageInfo, JSON_UNESCAPED_UNICODE));
 }
-//////////////////////////////////////////////////////
-$products = [];
-foreach ( $categoriesWithProductsPageInfo as $i => $category) {
-    if (isset($category['children'])) {
-        foreach ($category['children'] as $j => $child) {
-            echo "{$i}.{$j}" . PHP_EOL;
-            echo $child['name'] . PHP_EOL;
-            $products[] = [
-                'category' => $child['name'],
-                'productData' => getProducts($child['productsPageInfo'])
-            ];
-        }
-    } else {
-        echo $category['name'] . PHP_EOL;
-        $products[] = [
-            'category' => $category['name'],
-            'productData' => $category['productsPageInfo']
-        ];
-    }
-}
-
-
-file_put_contents('products_page.json', json_encode($products, JSON_UNESCAPED_UNICODE));
-
 
 
 //////////////functions////////////////////
@@ -92,37 +67,30 @@ function getCategories(string $link, bool $recursive = true): array
     return $categories;
 }
 
-function getProductsPageInfo(string $pageLink): array
+function getProducts(string $pageLink): array
 {
-    $pageContent = file_get_contents($pageLink);
-    $infoBlock = (new Crawler($pageContent))->filter('div[data-is=Softcube]')->first()->attr('data-params');
-
-    return json_decode( str_replace('\'', '"', $infoBlock), true );
-}
-
-function getProducts(array $pageInfo): array
-{
-    $client = new Client(['base_uri' => BASE_EPICENTR_URL]);
-    $response = $client
-        ->request(
-            $pageInfo['method'],
-            $pageInfo['url'],
-            [
-                'form_params' =>  $pageInfo['request']
-            ]
-        );
-
-
-    $data = json_decode($response->getBody(), true);
     $products = [];
+    $pageContent = file_get_contents($pageLink);
+    $page = new Crawler($pageContent);
 
-    foreach ($data['api_response']['api_response']['items'] as $product)
-    {
-        $products[] = [
-            'name' => $product['NAME'],
-            'price' => $product['PRICE'],
-            'link' => BASE_EPICENTR_URL . $product['DETAIL_PAGE_URL'],
-        ];
+    $page
+        ->filter('.listbody .card__info')
+        ->each(function(Crawler $node) use (&$products) {
+            $p = $node->filter('.card__price .card__price-sum');
+            $products[] = [
+                'name' => $node->filter('.card__name b')->first()->text(),
+                'link' => BASE_EPICENTR_URL . $node->filter('.card__name a')->first()->attr('href'),
+                'price' => $p->count() ? $p->first()->text() : null,
+            ];
+        });
+
+    $nextPageLink = $page->filter('.custom-pagination__button--next');
+
+    if ( $nextPageLink->count()) {
+        $products = array_merge(
+            $products,
+            getProducts(BASE_EPICENTR_URL . $nextPageLink->first()->attr('href'))
+        );
     }
 
     return $products;
