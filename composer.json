@@ -1,0 +1,14 @@
+{
+    "name": "vadym007/parser",
+    "authors": [
+        {
+            "name": "VadymYakovenko",
+            "email": "vadosdv00000@gmail.com"
+        }
+    ],
+    "require": {
+        "symfony/dom-crawler": "^5.0",
+        "guzzlehttp/guzzle": "^6.5",
+        "symfony/css-selector": "^5.0"
+    }
+}
