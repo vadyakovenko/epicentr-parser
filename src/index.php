@@ -17,26 +17,54 @@ if (file_exists('categories.json')) {
     file_put_contents(CATEGORIES_FILE, json_encode($categories, JSON_UNESCAPED_UNICODE));
 }
 
-$categoriesWithProductsPageInfo = $categories;
+$categoriesWithProducts = $categories;
 
 if (file_exists(CATEGORIES_WITH_PRODUCTS)) {
-    $categoriesWithProductsPageInfo = json_decode(file_get_contents(CATEGORIES_WITH_PRODUCTS), true);
+    $categoriesWithProducts = json_decode(file_get_contents(CATEGORIES_WITH_PRODUCTS), true);
 } else {
-    foreach ( $categoriesWithProductsPageInfo as $i => &$category) {
+    foreach ( $categoriesWithProducts as $i => &$category) {
         if (isset($category['children'])) {
             foreach ($category['children'] as $j => &$child) {
                 echo "{$i}.{$j}" . PHP_EOL;
                 echo $child['name'] . PHP_EOL;
-                $child[$j]['products'] = getProducts(BASE_EPICENTR_URL . $child['uri']);
+                $child['products'] = getProducts(BASE_EPICENTR_URL . $child['uri']);
             }
         } else {
             echo $i . PHP_EOL;
             echo $category['name'] . PHP_EOL;
-            $category[$i]['products'] = getProducts(BASE_EPICENTR_URL . $category['uri']);
+            $category['products'] = getProducts(BASE_EPICENTR_URL . $category['uri']);
         }
     }
-    file_put_contents(CATEGORIES_WITH_PRODUCTS, json_encode($categoriesWithProductsPageInfo, JSON_UNESCAPED_UNICODE));
+    file_put_contents(CATEGORIES_WITH_PRODUCTS, json_encode($categoriesWithProducts, JSON_UNESCAPED_UNICODE));
 }
+
+$flatArray = [['Category name', 'Category link', 'Product name', 'Product link', 'Product price']];
+
+foreach ($categoriesWithProducts as $category) {
+    if(isset($category['children'])) {
+        foreach ($category['children'] as $child) {
+            if(isset($child['products'])) {
+                foreach ($child['products'] as $product) {
+                    $flatArray[] = [
+                        $child['name'],
+                        BASE_EPICENTR_URL . $child['uri'],
+                        $product['name'],
+                        $product['link'],
+                        $product['price']
+                    ];
+                }
+            }
+        }
+    }
+}
+
+$fp = fopen('products.csv', 'w');
+
+foreach ($flatArray as $fields) {
+    fputcsv($fp, $fields);
+}
+
+fclose($fp);
 
 
 //////////////functions////////////////////
